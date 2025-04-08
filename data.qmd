@@ -1,0 +1,21 @@
+---
+title: "data"
+author: "Daniel(Kailun) Jin, John Ju"
+format: html
+editor: visual
+---
+```{r}
+ data <- read.csv("Life Expectancy Data.csv")
+ glimpse(data)
+```
+
+We found our data in kaggle website, our data is about the life expectancy for each country from
+2000 to 2015. Here is our link.
+ 
+[data source link]()
+ 
+Research question, dose the percentage.expenditure has association the life expectancy.
+ 
+response:Life.expectancy
+ 
+key predictor:percentage.expenditure
