@@ -1,0 +1,125 @@
+---
+title: "data"
+author: "Daniel(Kailun) Jin, John Ju"
+format: html
+editor: visual
+embed-resources: true
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(mosaic)
+library(ggformula)
+library(rethinking)
+library(rstan)
+library(CalvinBayes)
+library(bayesplot)
+library(tidybayes)
+library(dagitty)
+library(ggdag)
+rm(list = ls())  # Clear environment
+```
+
+# Dataset
+
+```{r}
+ lf_data <- read_csv("Life Expectancy Data.csv")
+
+names(lf_data) <- str_replace_all(names(lf_data), pattern = " ", replacement = "_")
+  
+  
+ glimpse(lf_data)
+```
+
+We found data in Kaggle website, and our data is about the life expectancy for each country from 2000 to 2015. Here is our link.
+
+[data source link](https://www.kaggle.com/datasets/kumarajarshi/life-expectancy-who?resource=download)
+
+# Plan
+
+**Research question**: Dose the percentage.expenditure has association the life expectancy?
+
+**Response**:`Life_expectancy`
+
+**Key predictor**:`percentage_expenditure` Expenditure on health as a percentage of Gross Domestic Product per capital(%)
+
+**Confounder**:
+
+`GDP`: It can decide how much we can have in percentage_expenditure, also shows the total economic developing of the country which will affect the Life_expectancy.
+
+`Schooling`: High schooling country may have high percentage_expenditure, and high schooling also related the level of health and living habit which will affect Life_expectancy.
+
+`Status`: Status will influence the the percentage_expenditure, and usually developed country may have high Life_expectancy.
+
+`Income_composition_of_resources`: It indicate the country's resources allocation, and reflect the economic level, also will affect the Life_expectancy.
+
+**Mediators**
+
+Immunization Rates(Hepatitis B, Polio, Diphtheria, Measles,HIV/AIDS):Increased health expenditure (percentage expenditure) typically enhances public health initiatives, leading to higher immunization coverage. This reduces the prevalence of infectious diseases and subsequently contributes to increased life expectancy. These indicators can help explain part of the indirect effect of health expenditure on longevity.
+
+Infant deaths / under-five deaths: The percentage_expenditure will affect the infant deaths and under-five deaths, and them will affect the Life_expectancy.
+
+**Moderators**
+`Status`: Different satuts of county may have different result in the same amount of percentage_expenditure.
+
+**Collider**
+Total_expenditure: it will affect both by GDP and government.
+
+Adult_Mortality: It will affected by Life_expectancy and other health behavior. 
+
+**Other**
+`Year`: Life_expectancy and percentage_expenditure will change through years, we need to consider the difference of it.
+
+`Population`: Total population in each country each year, may include.
+## Casual Diagrams
+
+```{r}
+glimpse(lf_data)
+summary(lf_data)
+colnames(lf_data)
+```
+
+
+```{r}
+lfcd <- dagitty("dag {
+  percentage_expenditure -> Life_expectancy
+
+  GDP -> percentage_expenditure
+  GDP -> Life_expectancy
+
+  Schooling -> percentage_expenditure
+  Schooling -> Life_expectancy
+
+  Status -> percentage_expenditure
+  Status -> Life_expectancy
+
+  Income_composition_of_resources -> percentage_expenditure
+  Income_composition_of_resources -> Life_expectancy
+
+  percentage_expenditure -> Hepatitis_B
+  percentage_expenditure -> Polio
+  percentage_expenditure -> Measles
+  percentage_expenditure -> Diphtheria
+  percentage_expenditure -> HIVAIDS
+  Hepatitis_B -> Life_expectancy
+  Polio -> Life_expectancy
+  Measles -> Life_expectancy
+  Diphtheria -> Life_expectancy
+  HIVAIDS -> Life_expectancy
+
+  percentage_expenditure -> infant_deaths
+  percentage_expenditure -> under_five_deaths
+  infant_deaths -> Life_expectancy
+  under_five_deaths -> Life_expectancy
+}")
+
+
+ 
+
+gg_dag(lfcd,
+
+       size = 20,
+
+       highlight = 'percentage_expenditure')
+
+```
