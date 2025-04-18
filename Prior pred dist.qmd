@@ -1,10 +1,11 @@
 ---
 title: "Prior Pred Dist"
 author: "Daniel(Kailun) Jin, John Ju"
-format: html
+format: typst
 editor: visual
 embed-resources: true
 ---
+
 ```{r setup, include=FALSE}
 library(tidyverse)
 library(ggformula)
@@ -17,7 +18,7 @@ library(dagitty)
 library(ggdag)
 ```
 
-# Dataset
+# Data
 
 ```{r}
  lf_data <- read_csv("Life Expectancy Data.csv")
@@ -110,9 +111,10 @@ gg_dag(lfcd,
 
 ```
 
-We will use predictor: percentage_expenditure, GDP, Schooling, Status, Year
+We will use predictor: percentage_expenditure, GDP, Schooling, Status.
 
 ### Check the Null value in the data set.(unsure what we want to do yet)
+
 ```{r}
 lf_data |>
   # for every variable,
@@ -120,7 +122,6 @@ lf_data |>
                    # add up the number of missing values
                    ~ sum(is.na(.))))
 ```
-
 
 ## Prior Predictive Distribution
 
@@ -132,11 +133,84 @@ zlf_data <- lf_data |>
     GDP_scaled = as.numeric(scale(GDP)),
     Schooling_scaled = as.numeric(scale(Schooling)),
     Status = factor(Status),
-    Status_ix = as.numeric(Status),
-    Year = factor(Year),
-    Year_ix = as.numeric(Year))|>
+    Status_ix = as.numeric(Status))|>
   # drop any rows with NAs
-  select(percentage_expenditure_scaled, GDP_scaled, Schooling_scaled, Status, Status_ix, Year, Year_ix)|>
+  select(percentage_expenditure_scaled, GDP_scaled, Schooling_scaled, Status, Status_ix)|>
   drop_na()
 ```
 
+## Model Description
+
+Likelihood: $$\text{Life_expectancy}_i \sim \text{Gamma}(\mu_i, \sigma)$$
+
+$$log(\mu\_i) = \beta_0\ + \beta_1\ \text{percentage_expenditure_scaled}\_i$$
+
+$$ + \beta_2\ \text{GDP_scaled}\_i + \beta_3\ \text{Schooling_scaled}\_i + \beta_4\ [\text{Status_ix}_i]$$
+
+Priors: $$ \sigma \sim \text{Exponential}(1)$$
+
+From the WHO we can know the the global Life_expectancy is about 71.4 in 2021, log(71.4) is around 4.27, let's just take 4, and standard deviation take 1. [Sources Link](https://www.who.int/data/gho/data/themes/mortality-and-global-health-estimates/ghe-life-expectancy-and-healthy-life-expectancy)
+
+$$ \beta_0 \sim \text{Normal}(4, 1) $$
+
+For other prior because we don't know how each value affect on the Life_expectancy so we just use mean as 0, and sd as 0.5, exp(0.5) is around 1.65. So that each of them will not change it a lot.
+
+$$ \beta_1 \sim \text{Normal}(0, 0.5) $$
+
+$$ \beta_2 \sim \text{Normal}(0, 0.5) $$
+
+$$ \beta_3 \sim \text{Normal}(0, 0.5) $$
+
+$$ \beta_3 \sim \text{Normal}(0, 0.5) $$
+
+$$ \beta_4 \sim \text{Normal}(0, 0.5) $$
+
+Parameter transformations: $$\alpha = \frac{\mu^2}{\sigma^2}$$ $$\lambda = \frac{\mu}{\sigma^2}$$
+
+```{r}
+n_sim <- 100 
+prior_pred_dist <- tibble(
+  sim_id = c(1:n_sim)) |>
+  mutate(
+    b0 = rnorm(n_sim, mean = 4, sd = 1),         # intercept
+    b1 = rnorm(n_sim, mean = 0, sd = 0.5),       # percentage_expenditure_scaled\
+    b2 = rnorm(n_sim, mean = 0, sd = 0.5),       # GDP_scaled
+    b3 = rnorm(n_sim, mean = 0, sd = 0.5),       # Schooling_scaled
+    b4 = rnorm(n_sim, mean = 0, sd = 0.5),       # Status_ix (binary: 0 or 1)
+    sigma = rexp(n_sim, rate = 1)                 # dispersion
+  ) |>
+  rowwise()|>
+  mutate(
+    mu = list(exp(
+      b0 +
+      b1 * zlf_data$percentage_expenditure_scaled +
+      b2 * zlf_data$GDP_scaled +
+      b3 * zlf_data$Schooling_scaled +
+      b4 * zlf_data$Status_ix
+    )),
+    percentage_expenditure_scaled = list(zlf_data$percentage_expenditure_scaled),
+    GDP_scaled = list(zlf_data$GDP_scaled),
+    Schooling_scaled = list(zlf_data$Schooling_scaled),
+    Status_ix = list(zlf_data$Status_ix)
+  ) |>
+  unnest(cols = c(mu, percentage_expenditure_scaled, GDP_scaled, Schooling_scaled, Status_ix)) |>
+  ungroup() |>
+  mutate(
+    alpha = mu^2 / sigma^2,
+    lambda = mu / sigma^2
+  ) |>
+  rowwise() |>
+  mutate(
+    sim_life = rgamma(1, shape = alpha, rate = lambda)
+  ) |>
+  ungroup()
+```
+
+```{r}
+gf_dens(~sim_life, group = ~sim_id, 
+        data = prior_pred_dist) |>
+  gf_labs('Simulated Life_expectancy\n(each line is one dataset)')|>
+  gf_lims(x = c(0,10))
+```
+
+Little confused about what do next!
