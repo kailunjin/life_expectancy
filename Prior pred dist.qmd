@@ -1,11 +1,10 @@
 ---
-title: "data"
+title: "Prior Pred Dist"
 author: "Daniel(Kailun) Jin, John Ju"
-format: typst
+format: html
 editor: visual
 embed-resources: true
 ---
-
 ```{r setup, include=FALSE}
 library(tidyverse)
 library(ggformula)
@@ -25,8 +24,6 @@ library(ggdag)
 
 names(lf_data) <- str_replace_all(names(lf_data), pattern = " ", replacement = "_")
   
-  
- glimpse(lf_data)
 ```
 
 We found data in Kaggle website, and our data is about the life expectancy for each country from 2000 to 2015. Here is our link.
@@ -41,6 +38,8 @@ We found data in Kaggle website, and our data is about the life expectancy for e
 
 **Key predictor**:`percentage_expenditure` Expenditure on health as a percentage of Gross Domestic Product per capital(%)
 
+**Level**: Country
+
 **Confounder**:
 
 `GDP`: It can decide how much we can have in percentage_expenditure, also shows the total economic developing of the country which will affect the Life_expectancy.
@@ -49,7 +48,7 @@ We found data in Kaggle website, and our data is about the life expectancy for e
 
 `Status`: Status will influence the the percentage_expenditure, and usually developed country may have high Life_expectancy.
 
-`Income_composition_of_resources`: It indicate the country's resources allocation, and reflect the economic level, also will affect the Life_expectancy.
+`Year`: Life_expectancy and percentage_expenditure will change through years, we need to consider the difference of it.
 
 **Mediators**
 
@@ -63,7 +62,7 @@ Infant deaths / under-five deaths: The percentage_expenditure will affect the in
 
 Adult_Mortality: It will affected by Life_expectancy and other health behavior.
 
-**Other** `Year`: Life_expectancy and percentage_expenditure will change through years, we need to consider the difference of it.
+**Other**
 
 `Population`: Total population in each country each year, may include.
 
@@ -81,9 +80,6 @@ lfcd <- dagitty("dag {
 
   Status -> percentage_expenditure
   Status -> Life_expectancy
-
-  Income_composition_of_resources -> percentage_expenditure
-  Income_composition_of_resources -> Life_expectancy
 
   percentage_expenditure -> Hepatitis_B
   percentage_expenditure -> Polio
@@ -113,3 +109,34 @@ gg_dag(lfcd,
        highlight = 'percentage_expenditure')
 
 ```
+
+We will use predictor: percentage_expenditure, GDP, Schooling, Status, Year
+
+### Check the Null value in the data set.(unsure what we want to do yet)
+```{r}
+lf_data |>
+  # for every variable,
+  summarise(across(everything(),
+                   # add up the number of missing values
+                   ~ sum(is.na(.))))
+```
+
+
+## Prior Predictive Distribution
+
+```{r}
+zlf_data <- lf_data |>
+  # scaled the predictor
+  mutate(
+    percentage_expenditure_scaled = as.numeric(scale(percentage_expenditure)),
+    GDP_scaled = as.numeric(scale(GDP)),
+    Schooling_scaled = as.numeric(scale(Schooling)),
+    Status = factor(Status),
+    Status_ix = as.numeric(Status),
+    Year = factor(Year),
+    Year_ix = as.numeric(Year))|>
+  # drop any rows with NAs
+  select(percentage_expenditure_scaled, GDP_scaled, Schooling_scaled, Status, Status_ix, Year, Year_ix)|>
+  drop_na()
+```
+
