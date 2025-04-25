@@ -135,7 +135,7 @@ zlf_data <- lf_data |>
     Status = factor(Status),
     Status_ix = as.numeric(Status))|>
   # drop any rows with NAs
-  select(percentage_expenditure_scaled, GDP_scaled, Schooling_scaled, Status, Status_ix)|>
+  select(Life_expectancy, percentage_expenditure_scaled, GDP_scaled, Schooling_scaled, Status, Status_ix)|>
   drop_na()
 ```
 
@@ -178,7 +178,8 @@ prior_pred_dist <- tibble(
     b1 = rnorm(n_sim, mean = 0, sd = 0.1),       # percentage_expenditure_scaled
     b2 = rnorm(n_sim, mean = 0, sd = 0.1),       # GDP_scaled
     b3 = rnorm(n_sim, mean = 0, sd = 0.1),       # Schooling_scaled
-    b4 = rnorm(n_sim, mean = 0, sd = 0.1),       # Status_ix (binary: 0 or 1)
+    b4_1 = rnorm(n_sim, mean = 0, sd = 0.1),       # Status_ix (binary: 1 or 2)\
+    b4_2 = rnorm(n_sim, mean = 0, sd = 0.1),
     sigma = rexp(n_sim, rate = 5)                 # dispersion
   ) |>
   rowwise()|>
@@ -188,7 +189,8 @@ prior_pred_dist <- tibble(
       b1 * zlf_data$percentage_expenditure_scaled +
       b2 * zlf_data$GDP_scaled +
       b3 * zlf_data$Schooling_scaled +
-      b4 * zlf_data$Status_ix
+      b4_1 * ifelse(zlf_data$Status_ix == 1, 1, 0) +
+      b4_2 * ifelse(zlf_data$Status_ix == 2, 1, 0)
     )),
     percentage_expenditure_scaled = list(zlf_data$percentage_expenditure_scaled),
     GDP_scaled = list(zlf_data$GDP_scaled),
@@ -215,3 +217,98 @@ gf_dens(~sim_life, group = ~sim_id,
   gf_lims(x = c(0, 130))
 
 ```
+
+## Model Fit
+
+```{r}
+stan_data <- compose_data(zlf_data)
+```
+
+
+```{r}
+## stan file
+
+stan_gamma_life_expectancy <- '
+data { 
+  int<lower=1> n;  // number of observations
+  vector<lower=0>[n] Life_expectancy;  // response
+  vector[n] percentage_expenditure_scaled; // predictor
+  vector[n] GDP_scaled;                    // predictor
+  vector[n] Schooling_scaled;              // predictor
+  array[n] int Status_ix;                  // category predictor
+}
+
+parameters {
+  real<lower=0> sigma;  // sd of gamma dist
+  real b0;              // intercpet
+  real b1;
+  real b2;
+  real b3;
+  vector[2] b4;
+}
+
+model {
+  vector[n] mu;
+  vector[n] alpha;
+  vector[n] lambda;
+  for ( i in 1:n ) {
+    mu[i] = exp(b0 +
+      b1 * percentage_expenditure_scaled[i] +
+      b2 * GDP_scaled[i] +
+      b3 * Schooling_scaled[i] +
+      b4[Status_ix[i]]);
+      
+    alpha[i] = mu[i]^2 / sigma^2;
+    lambda[i] = mu[i] / sigma^2;
+  }
+  
+  b0 ~ normal(4, 0.2);
+  b1 ~ normal(0, 0.1);
+  b2 ~ normal(0, 0.1);
+  b3 ~ normal(0, 0.1);
+  b4 ~ normal(0, 0.1);
+  sigma ~ exponential(5);
+  
+  Life_expectancy ~ gamma(alpha, lambda); // have to use alpha, lambda parameterization for gamma()
+} 
+
+generated quantities {
+ // this is not really required - only if you want values of omega, alpha, beta included in your fitted model
+  vector[n] mu;
+  vector[n] alpha;
+  vector[n] lambda;
+  for (i in 1:n) {
+      mu[i] = exp(b0 +
+      b1 * percentage_expenditure_scaled[i] +
+      b2 * GDP_scaled[i] +
+      b3 * Schooling_scaled[i] +
+      b4[Status_ix[i]]); // if you want stan to compute expected values for each data row
+      
+    alpha[i] = mu[i]^2 / sigma^2; // if you want the beta parameters alpha and lambda for each row
+    
+    lambda[i] = mu[i] / sigma^2;
+  }
+}'
+```
+
+```{r}
+lf_model <- stan(
+  model_code = stan_gamma_life_expectancy, 
+  data = stan_data, 
+  iter = 1000, # iterations
+  chains = 4, # number of independent "chains" of samples to take
+  # adapt_delta can be 0-1: higher may reduce 
+  # "divergent transitions" by reducing step size
+  )
+```
+
+```{r}
+# trace plot
+bayesplot::mcmc_trace(lf_model)
+```
+
+```{r}
+# trace rank plot
+bayesplot::mcmc_rank_overlay(lf_model)
+```
+
